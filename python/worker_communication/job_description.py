@@ -41,3 +41,13 @@ class JobDescription:
         if key not in self.attribute_names:
             raise KeyError("Key {} not found".format(key))
         return getattr(self, key)
+    
+    def __contains__(self, item):
+        if item in self.attribute_names:
+            return True
+        return False
+
+if __name__ == "__main__":
+    jd = JobDescription(a="1", b="2")
+    print("a" in jd)
+    print(jd["a"])

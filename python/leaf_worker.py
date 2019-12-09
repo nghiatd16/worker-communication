@@ -3,8 +3,8 @@ from worker_communication import LeafWorker
 production_key = "TestWorkerCommunication"
 
 class LeafService(LeafWorker):
-    def __init__(self, production_key, consume_queue_name=None, **configs):
-        super().__init__(production_key, consume_queue_name=consume_queue_name, **configs)
+    def __init__(self, production_key, **configs):
+        super().__init__(production_key, **configs)
 
     
     def do_job(self, job_description):

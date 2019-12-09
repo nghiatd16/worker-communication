@@ -33,56 +33,19 @@ class BaseConnector:
         # Create connection parameters
         self.conn_params = self._create_rabbitmq_connection_parameters()
 
-        # Set up connection
-        self._init_connection_and_channel()
-
-    def __exit__(self):
-        try:
-            self.consume_channel.stop_consuming()
-        except:
-            pass
-        try:
-            self.produce_channel.close()
-        except:
-            pass
-        try:
-            self.consume_channel.close()
-        except:
-            pass
-        try:
-            self.connection.close()
-        except:
-            pass
-        print("Exit function called")
+    def get_produce_instance(self):
+        connection = pika.BlockingConnection(self.conn_params)
+        produce_channel = connection.channel()
+        produce_channel.basic_qos(prefetch_count=1)
+        return produce_channel
     
-    def __del__(self):
-        try:
-            self.consume_channel.stop_consuming()
-        except:
-            pass
-        try:
-            self.produce_channel.close()
-        except:
-            pass
-        try:
-            self.consume_channel.close()
-        except:
-            pass
-        try:
-            self.connection.close()
-        except:
-            pass
-        print("Del function called")
-
-    def _init_connection_and_channel(self):
-        # Set up connection
-        self.connection = pika.BlockingConnection(self.conn_params)
+    def get_consume_instance(self):
+        connection = pika.BlockingConnection(self.conn_params)
         # Set up channel
-        self.produce_channel = self.connection.channel()
-        self.consume_channel = self.connection.channel()
+        consume_channel = connection.channel()
         # Fair dispatch. More detail read Fair dispatch in https://www.rabbitmq.com/tutorials/tutorial-two-python.html
-        self.produce_channel.basic_qos(prefetch_count=1)
-        self.consume_channel.basic_qos(prefetch_count=1)
+        consume_channel.basic_qos(prefetch_count=1)
+        return consume_channel
 
     def _create_rabbitmq_connection_parameters(self):
 
@@ -99,26 +62,3 @@ class BaseConnector:
             credentials=credentials
         )
         return conn_params
-
-    def _reconnect(self, num_tries=None, delay_time=5):
-        counter = 0
-        while num_tries is None or counter < num_tries:
-            try:
-                counter += 1
-                self._init_connection_and_channel()
-                return True
-            except:
-                logging.info("Reconnect failed. Tried {}/{}.".format(counter, num_tries if num_tries is not None else "INF"))
-                if num_tries is None or counter < num_tries:
-                    logging.info("Trying to reconnect in {} second(s)".format(delay_time))
-                    time.sleep(delay_time)
-        return False
-
-    def _execute_function_in_ensure_connection(self, func, *args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except AMQPConnectionError:
-            logging.exception("Lost connection. Reconnecting ...")
-            stt = self._reconnect()
-            if not stt:
-                raise ConnectionError("Cannot reconnect to RabbitMQ Service")

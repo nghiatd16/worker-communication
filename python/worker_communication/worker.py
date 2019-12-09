@@ -41,6 +41,7 @@ class BaseWorker(BaseConnector, ABC):
             self.produce_queue = None
         
         # Define Dead-Letter-Queue
+        self.consume_channel = self.get_consume_instance()
         self.consume_channel.queue_declare(self.dead_letter_queue, durable=True)
 
         self._declare_queues()
@@ -108,6 +109,8 @@ class RootWorker(BaseWorker):
     def __init__(self, production_key, produce_queue_name, **configs):
         worker_name = "ROOT-WORKER"
         super().__init__(production_key, worker_name, consume_queue_name=None, produce_queue_name=produce_queue_name, **configs)
+        # self.consume_channel.connection.close()
+        # self.consume_channel.close()
 
     def _declare_queues(self):
         self._declare_queue(self.produce_queue)
@@ -115,13 +118,16 @@ class RootWorker(BaseWorker):
     def produce_job(self, job_description):
         # Root Worker is special, run method is useless so call do_job here. Only Root Worker should call do_job in produce_job method.
         self.do_job(job_description)
-        self.produce_channel.basic_publish(
+        produce_channel = self.get_produce_instance()
+        produce_channel.basic_publish(
                 exchange='',
                 routing_key=self.produce_queue,
                 body=job_description.to_json(),
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # make message persistent
             ))
+        produce_channel.close()
+        produce_channel.connection.close()
 
     def do_job(self, job_description):
         '''
@@ -168,13 +174,16 @@ class AbstractWorker(BaseWorker):
             raise Warning("Detected `dead-letter` in worker_name. If you want to create Dead Letter Worker, use Dead-Letter class")
     
     def produce_job(self, job_description):
-        self.produce_channel.basic_publish(
-                exchange='',
-                routing_key=self.produce_queue,
-                body=job_description.to_json(),
-                properties=pika.BasicProperties(
-                    delivery_mode=2,  # make message persistent
-            ))
+        produce_channel = self.get_produce_instance()
+        produce_channel.basic_publish(
+            exchange='',
+            routing_key=self.produce_queue,
+            body=job_description.to_json(),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+        ))
+        produce_channel.close()
+        produce_channel.connection.close()
     
     def _declare_queues(self):
         self._declare_queue(self.produce_queue)
@@ -189,6 +198,7 @@ class AbstractWorker(BaseWorker):
             self.produce_job(job_description)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
+            traceback.print_exc()
             job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
             job_description.add_attribute(self.INDICATOR['current_task_status'], False)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
