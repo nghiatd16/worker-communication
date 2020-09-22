@@ -3,6 +3,7 @@ from abc import abstractmethod, ABC
 from .connection import BaseConnector
 from .job_description import JobDescription
 import traceback
+import time
 
 class BaseWorker(BaseConnector, ABC):
     LEAF_WORKER_NAME = "LEAF-WORKER"
@@ -61,15 +62,15 @@ class BaseWorker(BaseConnector, ABC):
         '''
         pass
 
-    def _declare_queue(self, queue_name):
+    def _declare_queue(self, queue_name, message_ttl=3600000, dead_letter_exchange=None, dead_letter_routing_key=None):
         '''
             Method declare queue with provided queue_name
         '''
         if queue_name is not None:
             self.consume_channel.queue_declare(queue=queue_name, durable=True, arguments={
-                                            'x-message-ttl' : 3600000, # Time-to-live message, default 3 600 000ms = 3600s
-                                            'x-dead-letter-exchange' : '',
-                                            "x-dead-letter-routing-key" : self.dead_letter_queue,
+                                            'x-message-ttl' : message_ttl, # Time-to-live message, default 3 600 000ms = 3600s
+                                            'x-dead-letter-exchange' : '' if dead_letter_exchange is None else dead_letter_exchange,
+                                            "x-dead-letter-routing-key" : self.dead_letter_queue if dead_letter_routing_key is None else dead_letter_routing_key,
                                             })
             # self.consume_channel.queue_bind(exchange='amq.direct', queue='task_queue')
     
@@ -117,6 +118,7 @@ class RootWorker(BaseWorker):
 
     def produce_job(self, job_description):
         # Root Worker is special, run method is useless so call do_job here. Only Root Worker should call do_job in produce_job method.
+        job_description.add_attribute("_timelogs_", [{"service": self.worker_name, "recv_time": time.time()}])
         self.do_job(job_description)
         produce_channel = self.get_produce_instance()
         produce_channel.basic_publish(
@@ -191,6 +193,8 @@ class AbstractWorker(BaseWorker):
 
     def on_receive_job_handler(self, ch, method, properties, body):
         job_description = JobDescription.fromJson(body)
+        # record time log for service
+        job_description._timelogs_.append({"service": self.worker_name, "recv_time": time.time()})
         job_description.addAttribute(self.INDICATOR['current_task_name'], self.worker_name)
         try:
             self.do_job(job_description)
@@ -199,8 +203,91 @@ class AbstractWorker(BaseWorker):
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
             traceback.print_exc()
-            job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
-            job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
+    
+    def run(self):
+        self.consume_channel.basic_consume(self.consume_queue, on_message_callback=self.on_receive_job_handler, auto_ack=False)
+        self.consume_channel.start_consuming()
+
+class DelayRequeueWorker(BaseWorker):
+    def __init__(self, production_key, worker_name, consume_queue_name, produce_queue_name, delay_requeue_time=1000, **configs):
+        self.__warning_worker_name(worker_name)
+        super().__init__(production_key, worker_name, consume_queue_name=consume_queue_name, produce_queue_name=produce_queue_name, **configs)
+        self.standby_queue = "{}__{}-standby".format(self.production_key, worker_name)
+        self._declare_queue(self.standby_queue, message_ttl=delay_requeue_time, dead_letter_routing_key=self.consume_queue)
+        self.__delay_requeue_flag = False
+
+    @classmethod
+    def __warning_worker_name(cls, worker_name):
+        if worker_name == "ROOT-WORKER":
+            raise Exception("Worker name ROOT-WORKER only available for root worker. If you want to create Root Worker, use RootWorker class")
+        if "root" in worker_name.lower():
+            raise Warning("Detected `root` in worker_name. If you want to create Root Worker, use RootWorker class")
+            
+        if worker_name == "LEAF-WORKER":
+            raise Exception("Worker name LEAF-WORKER only available for leaf worker. If you want to create Leaf Worker, use LeafWorker class")
+        if "leaf" in worker_name.lower():
+            raise Warning("Detected `leaf` in worker_name. If you want to create Leaf Worker, use LeafWorker class")
+        
+        if worker_name == "DEAD-LETTER-WORKER":
+            raise Exception("Worker name LEAF-WORKER only available for leaf worker. If you want to create Leaf Worker, use LeafWorker class")
+        if "dead-letter" in worker_name.lower():
+            raise Warning("Detected `dead-letter` in worker_name. If you want to create Dead Letter Worker, use Dead-Letter class")
+    
+    def __get_requeue_indicator(self):
+        return f"__{self.standby_queue}__"
+
+    def delay_requeue_job(self, job):
+        job.add_attribute(self.__get_requeue_indicator(), True)
+
+    def __send_job_to_standby_queue(self, job_description):
+        job_description.del_attribute(self.__get_requeue_indicator())
+        produce_channel = self.get_produce_instance()
+        produce_channel.basic_publish(
+            exchange='',
+            routing_key=self.standby_queue,
+            body=job_description.to_json(),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+        ))
+        produce_channel.close()
+        produce_channel.connection.close()
+
+    def produce_job(self, job_description):
+        produce_channel = self.get_produce_instance()
+        produce_channel.basic_publish(
+            exchange='',
+            routing_key=self.produce_queue,
+            body=job_description.to_json(),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+        ))
+        produce_channel.close()
+        produce_channel.connection.close()
+    
+    def _declare_queues(self):
+        self._declare_queue(self.produce_queue)
+        self._declare_queue(self.consume_queue)
+
+    def on_receive_job_handler(self, ch, method, properties, body):
+        job_description = JobDescription.fromJson(body)
+        # record time log for service
+        job_description._timelogs_.append({"service": self.worker_name, "recv_time": time.time()})
+        job_description.addAttribute(self.INDICATOR['current_task_name'], self.worker_name)
+        try:
+            self.do_job(job_description)
+            job_description.add_attribute(self.INDICATOR['current_task_status'], True)
+            if self.__get_requeue_indicator() in job_description:
+                self.__send_job_to_standby_queue(job_description)
+            else:
+                self.produce_job(job_description)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except:
+            traceback.print_exc()
+            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
     
     def run(self):
@@ -223,14 +310,17 @@ class LeafWorker(BaseWorker):
 
     def on_receive_job_handler(self, ch, method, properties, body):
         job_description = JobDescription.fromJson(body)
+        # record time log for service
+        job_description._timelogs_.append({"service": self.worker_name, "recv_time": time.time()})
         job_description.addAttribute(self.INDICATOR['current_task_name'], self.worker_name)
         try:
             self.do_job(job_description)
             job_description.add_attribute(self.INDICATOR['current_task_status'], True)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
-            job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
-            job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            traceback.print_exc()
+            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
     
     def run(self):
@@ -244,7 +334,7 @@ class DeadLetterWorker(BaseWorker):
 
     def produce_job(self, job_description):
         '''
-            DeadLetter Workerabsolutely shouldn't produce anything.
+            DeadLetter Worker absolutely shouldn't produce anything.
         '''
         return
     

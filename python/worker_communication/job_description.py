@@ -15,15 +15,23 @@ class JobDescription:
     def addAttribute(self, name, value):
         setattr(self, name, value)
         self.attribute_names.add(name)
-    
+
     def add_attribute(self, name, value):
         self.addAttribute(name, value)
+
+    def delAttribute(self, name):
+        if name in self.attribute_names:
+            delattr(self, name)
+            self.attribute_names.remove(name)
+    
+    def del_attribute(self, name):
+        self.delAttribute(name)
 
     def toJson(self):
         data_pack = dict()
         for attr_name in self.attribute_names:
             data_pack[attr_name] = getattr(self, attr_name)
-        return json.dumps(data_pack)
+        return json.dumps(data_pack, ensure_ascii=False)
     
     def to_json(self):
         return self.toJson()

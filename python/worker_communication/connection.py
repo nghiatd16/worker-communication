@@ -9,8 +9,8 @@ class BaseConnector:
     DEFAULT_CONFIG = {
         "RABBITMQ_HOST": "127.0.0.1", # IP Address or Domain name of RabbitMQ Service
         "RABBITMQ_PORT": 5672, # Serving port of RabbitMQ Service
-        "RABBITMQ_USER": "zalo", # Username of account
-        "RABBITMQ_PWD": "zalo" # Password of account
+        "RABBITMQ_USER": "guest", # Username of account
+        "RABBITMQ_PWD": "guest" # Password of account
     }
     INDICATOR = {
         "current_task_name": "__indicator__current_task_name",
@@ -32,6 +32,15 @@ class BaseConnector:
 
         # Create connection parameters
         self.conn_params = self._create_rabbitmq_connection_parameters()
+
+    def get_queue_size(self, queue_name):
+        connection = pika.BlockingConnection(self.conn_params)
+        channel = connection.channel()
+        q = channel.queue_declare(queue=queue_name, passive=True)
+        queue_size = q.method.message_count
+        channel.close()
+        connection.close()
+        return queue_size
 
     def get_produce_instance(self):
         connection = pika.BlockingConnection(self.conn_params)
