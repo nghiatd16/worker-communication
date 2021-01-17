@@ -4,7 +4,7 @@ from .connection import BaseConnector
 from .job_description import JobDescription
 import traceback
 import time
-
+import logging
 class BaseWorker(BaseConnector, ABC):
     LEAF_WORKER_NAME = "LEAF-WORKER"
     DEAD_LETTER_WORKER_NAME = "DEAD-LETTER-QUEUE"
@@ -46,6 +46,19 @@ class BaseWorker(BaseConnector, ABC):
         self.consume_channel.queue_declare(self.dead_letter_queue, durable=True)
 
         self._declare_queues()
+    
+    def sendMessageToDeadLetter(self, job_description):
+        dead_worker_name = self.getDeadWorkerQueueName(self.production_key)
+        produce_channel = self.get_produce_instance()
+        produce_channel.basic_publish(
+                exchange='',
+                routing_key=self.dead_letter_queue,
+                body=job_description.to_json(),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,  # make message persistent
+            ))
+        produce_channel.close()
+        produce_channel.connection.close()
 
     @classmethod
     def getLeafWorkerQueueName(cls, production_key):
@@ -202,9 +215,10 @@ class AbstractWorker(BaseWorker):
             self.produce_job(job_description)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
-            traceback.print_exc()
-            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
-            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            logging.error(traceback.print_exc())
+            job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            self.sendMessageToDeadLetter(job_description)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
     
     def run(self):
@@ -274,7 +288,11 @@ class DelayRequeueWorker(BaseWorker):
     def on_receive_job_handler(self, ch, method, properties, body):
         job_description = JobDescription.fromJson(body)
         # record time log for service
-        job_description._timelogs_.append({"service": self.worker_name, "recv_time": time.time()})
+        # Prevent add multiple time log when loop multi times.
+        if len(job_description._timelogs_) > 0:
+            last_service = job_description._timelogs_[-1]
+            if last_service["service"] != self.worker_name:
+                job_description._timelogs_.append({"service": self.worker_name, "recv_time": time.time()})
         job_description.addAttribute(self.INDICATOR['current_task_name'], self.worker_name)
         try:
             self.do_job(job_description)
@@ -285,9 +303,10 @@ class DelayRequeueWorker(BaseWorker):
                 self.produce_job(job_description)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
-            traceback.print_exc()
-            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
-            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            logging.error(traceback.print_exc())
+            job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            self.sendMessageToDeadLetter(job_description)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
     
     def run(self):
@@ -318,9 +337,10 @@ class LeafWorker(BaseWorker):
             job_description.add_attribute(self.INDICATOR['current_task_status'], True)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except:
-            traceback.print_exc()
-            # job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
-            # job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            logging.error(traceback.print_exc())
+            job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
+            job_description.add_attribute(self.INDICATOR['current_task_status'], False)
+            self.sendMessageToDeadLetter(job_description)
             ch.basic_reject(delivery_tag = method.delivery_tag, requeue=False) # Requeue false will send message to specified x-dead-letter-routing-key
     
     def run(self):
@@ -347,7 +367,9 @@ class DeadLetterWorker(BaseWorker):
         # Comment below line because DO NOT add worker_name of Dead Letter Worker to jobDescription, because we want to known where is exception thrown
         # job_description.addAttribute(self.INDICATOR['current_task_name'], self.worker_name)
         try:
-            self.do_job(job_description)
+            # Only process message has flag False
+            if job_description[self.INDICATOR['current_task_status']] == True:
+                self.do_job(job_description)
             job_description.add_attribute(self.INDICATOR['current_task_status'], True)
         except:
             job_description.addAttribute(self.INDICATOR['current_task_error'], traceback.format_exc())
