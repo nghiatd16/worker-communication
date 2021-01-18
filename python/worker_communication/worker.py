@@ -8,7 +8,7 @@ import logging
 class BaseWorker(BaseConnector, ABC):
     LEAF_WORKER_NAME = "LEAF-WORKER"
     DEAD_LETTER_WORKER_NAME = "DEAD-LETTER-QUEUE"
-    def __init__(self, production_key, worker_name, consume_queue_name=None, produce_queue_name=None, **configs):
+    def __init__(self, production_key, worker_name, consume_queue_name=None, produce_queue_name=None, connection_params_list=None):
         '''
             Base Worker defines the criterion of worker including necessary attributes, required functions, ...
             You shouldn't inherit BaseWorker because it requires much work to do, 
@@ -21,7 +21,7 @@ class BaseWorker(BaseConnector, ABC):
                                 produce_queue should be None, because leaf worker only do some procedures to finish the pipeline, example:
                                 update status, response users, write logs, etc ...
         '''
-        super().__init__(**configs)
+        super().__init__(connection_params_list)
         if consume_queue_name is None and produce_queue_name is None:
             if (worker_name not in ['LEAF-WORKER', 'DEAD-LETTER-WORKER']):
                 raise Exception("Consume and Produce Queue have both None")
@@ -120,9 +120,9 @@ class BaseWorker(BaseConnector, ABC):
         pass
 
 class RootWorker(BaseWorker):
-    def __init__(self, production_key, produce_queue_name, **configs):
+    def __init__(self, production_key, produce_queue_name, connection_params_list=None):
         worker_name = "ROOT-WORKER"
-        super().__init__(production_key, worker_name, consume_queue_name=None, produce_queue_name=produce_queue_name, **configs)
+        super().__init__(production_key, worker_name, consume_queue_name=None, produce_queue_name=produce_queue_name, connection_params_list=connection_params_list)
         # self.consume_channel.connection.close()
         # self.consume_channel.close()
 
@@ -166,9 +166,9 @@ class RootWorker(BaseWorker):
         return
 
 class AbstractWorker(BaseWorker):
-    def __init__(self, production_key, worker_name, consume_queue_name, produce_queue_name, **configs):
+    def __init__(self, production_key, worker_name, consume_queue_name, produce_queue_name, connection_params_list=None):
         self.__warning_worker_name(worker_name)
-        super().__init__(production_key, worker_name, consume_queue_name=consume_queue_name, produce_queue_name=produce_queue_name, **configs)
+        super().__init__(production_key, worker_name, consume_queue_name=consume_queue_name, produce_queue_name=produce_queue_name, connection_params_list=connection_params_list)
         
 
     @classmethod
@@ -226,9 +226,9 @@ class AbstractWorker(BaseWorker):
         self.consume_channel.start_consuming()
 
 class DelayRequeueWorker(BaseWorker):
-    def __init__(self, production_key, worker_name, consume_queue_name, produce_queue_name, delay_requeue_time=1000, **configs):
+    def __init__(self, production_key, worker_name, consume_queue_name, produce_queue_name, delay_requeue_time=1000, connection_params_list=None):
         self.__warning_worker_name(worker_name)
-        super().__init__(production_key, worker_name, consume_queue_name=consume_queue_name, produce_queue_name=produce_queue_name, **configs)
+        super().__init__(production_key, worker_name, consume_queue_name=consume_queue_name, produce_queue_name=produce_queue_name, connection_params_list=connection_params_list)
         self.standby_queue = "{}__{}-standby".format(self.production_key, worker_name)
         self._declare_queue(self.standby_queue, message_ttl=delay_requeue_time, dead_letter_routing_key=self.consume_queue)
         self.__delay_requeue_flag = False
@@ -314,9 +314,9 @@ class DelayRequeueWorker(BaseWorker):
         self.consume_channel.start_consuming()
 
 class LeafWorker(BaseWorker):
-    def __init__(self, production_key, **configs):
+    def __init__(self, production_key, connection_params_list=None):
         worker_name = 'LEAF-WORKER'
-        super().__init__(production_key, worker_name, **configs)
+        super().__init__(production_key, worker_name, connection_params_list=connection_params_list)
 
     def produce_job(self, job_description):
         '''
@@ -348,9 +348,9 @@ class LeafWorker(BaseWorker):
         self.consume_channel.start_consuming()
 
 class DeadLetterWorker(BaseWorker):
-    def __init__(self, production_key, **configs):
+    def __init__(self, production_key, connection_params_list=None):
         worker_name = 'DEAD-LETTER-WORKER'
-        super().__init__(production_key, worker_name, **configs)
+        super().__init__(production_key, worker_name, connection_params_list=connection_params_list)
 
     def produce_job(self, job_description):
         '''
