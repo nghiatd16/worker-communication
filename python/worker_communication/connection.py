@@ -6,6 +6,7 @@ import time
 from abc import abstractmethod
 import random
 from retry import retry
+from .pooling import ConnectionPool
 
 class ClusterConnectionParams:
     DEFAULT_CONFIG = {
@@ -49,35 +50,34 @@ class BaseConnector:
         self.all_endpoints = list()
         for p in connection_params_list:
             self.all_endpoints.append(self._create_rabbitmq_connection_parameters(p))
+        self.conn_pool = ConnectionPool(create=self._create_conn_func)
     
-    def _random_node(self):
+    def _create_conn_func(self):
         random.shuffle(self.all_endpoints)
+        print("Create connection called")
+        return pika.BlockingConnection(self.all_endpoints)
 
     @retry(AMQPConnectionError, tries=-1, delay=1, jitter=1)
     def get_queue_size(self, queue_name):
-        self._random_node()
-        connection = pika.BlockingConnection(self.all_endpoints)
-        channel = connection.channel()
-        q = channel.queue_declare(queue=queue_name, passive=True)
-        queue_size = q.method.message_count
-        channel.close()
-        connection.close()
-        return queue_size
+        with self.conn_pool.item() as connection:
+            channel = connection.connection.channel()
+            q = channel.queue_declare(queue=queue_name, passive=True)
+            queue_size = q.method.message_count
+            channel.close()
+            return queue_size
 
     @retry(AMQPConnectionError, tries=-1, delay=1, jitter=1)
     def get_produce_instance(self):
-        self._random_node()
-        connection = pika.BlockingConnection(self.all_endpoints)
-        produce_channel = connection.channel()
+        connection = self.conn_pool.item()
+        produce_channel = connection.connection.channel()
         produce_channel.basic_qos(prefetch_count=1)
         return produce_channel
     
     @retry(AMQPConnectionError, tries=-1, delay=1, jitter=1)
     def get_consume_instance(self):
-        self._random_node()
-        connection = pika.BlockingConnection(self.all_endpoints)
+        connection = self.conn_pool.item()
         # Set up channel
-        consume_channel = connection.channel()
+        consume_channel = connection.connection.channel()
         # Fair dispatch. More detail read Fair dispatch in https://www.rabbitmq.com/tutorials/tutorial-two-python.html
         consume_channel.basic_qos(prefetch_count=1)
         return consume_channel

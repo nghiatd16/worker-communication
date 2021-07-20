@@ -48,7 +48,7 @@ class BaseWorker(BaseConnector, ABC):
         self._declare_queues()
     
     def sendMessageToDeadLetter(self, job_description):
-        dead_worker_name = self.getDeadWorkerQueueName(self.production_key)
+        # dead_worker_name = self.getDeadWorkerQueueName(self.production_key)
         produce_channel = self.get_produce_instance()
         produce_channel.basic_publish(
                 exchange='',
@@ -58,7 +58,7 @@ class BaseWorker(BaseConnector, ABC):
                     delivery_mode=2,  # make message persistent
             ))
         produce_channel.close()
-        produce_channel.connection.close()
+        self.conn_pool.release(produce_channel.connection)
 
     @classmethod
     def getLeafWorkerQueueName(cls, production_key):
@@ -142,7 +142,7 @@ class RootWorker(BaseWorker):
                     delivery_mode=2,  # make message persistent
             ))
         produce_channel.close()
-        produce_channel.connection.close()
+        self.conn_pool.release(produce_channel.connection)
 
     def do_job(self, job_description):
         '''
@@ -198,7 +198,7 @@ class AbstractWorker(BaseWorker):
                 delivery_mode=2,  # make message persistent
         ))
         produce_channel.close()
-        produce_channel.connection.close()
+        self.conn_pool.release(produce_channel.connection)
     
     def _declare_queues(self):
         self._declare_queue(self.produce_queue)
@@ -267,7 +267,7 @@ class DelayRequeueWorker(BaseWorker):
                 delivery_mode=2,  # make message persistent
         ))
         produce_channel.close()
-        produce_channel.connection.close()
+        self.conn_pool.release(produce_channel.connection)
 
     def produce_job(self, job_description):
         produce_channel = self.get_produce_instance()
@@ -279,7 +279,7 @@ class DelayRequeueWorker(BaseWorker):
                 delivery_mode=2,  # make message persistent
         ))
         produce_channel.close()
-        produce_channel.connection.close()
+        self.conn_pool.release(produce_channel.connection)
     
     def _declare_queues(self):
         self._declare_queue(self.produce_queue)
