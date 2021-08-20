@@ -1,6 +1,5 @@
 package com.nghiatd16.communication;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
 import org.apache.commons.lang3.tuple.Pair;
