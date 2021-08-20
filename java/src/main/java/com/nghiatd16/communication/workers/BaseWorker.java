@@ -17,10 +17,10 @@ public abstract class BaseWorker extends BaseConnector {
     public static final String ROOT_WORKER_NAME = "ROOT-WORKER";
     public static final String LEAF_WORKER_NAME = "LEAF-WORKER";
     public static final String DEAD_LETTER_WORKER_NAME = "DEAD-LETTER-QUEUE";
-    public String productionKey = null;
-    public String workerName = null;
-    public String consumeQueueName = null;
-    public String produceQueueName = null;
+    protected String productionKey = null;
+    protected String workerName = null;
+    protected String consumeQueueName = null;
+    protected String produceQueueName = null;
 
     public BaseWorker(String productionKey, String workerName,
                       String consumeQueueName, String produceQueueName,

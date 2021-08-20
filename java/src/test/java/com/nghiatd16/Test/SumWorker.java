@@ -27,8 +27,6 @@ public class SumWorker {
         String productionKey = "test-prod";
         ClusterConnectionProvider connectionProvider = new ClusterConnectionProvider("localhost", "5672", "guest", "guest");
         Worker1 w = new Worker1(productionKey, "sum-worker", "sum-worker", BaseWorker.LEAF_WORKER_NAME, connectionProvider);
-        System.out.println(w.consumeQueueName);
-        System.out.println(w.produceQueueName);
         w.run();
     }
 }
