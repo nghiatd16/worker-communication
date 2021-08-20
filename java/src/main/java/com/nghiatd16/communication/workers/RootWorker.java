@@ -1,11 +1,11 @@
 package com.nghiatd16.communication.workers;
 
-import com.nghiatd16.communication.JobDescription;
+import com.nghiatd16.communication.common.JobDescription;
 import com.nghiatd16.communication.clientpool.ClusterConnectionProvider;
 import com.nghiatd16.communication.helpers.TimeHelper;
-import com.nghiatd16.communication.workers.BaseWorker;
-import com.rabbitmq.client.*;
-import org.apache.commons.lang3.exception.ExceptionUtils;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Envelope;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -16,11 +16,11 @@ import java.util.Arrays;
 public class RootWorker extends BaseWorker {
 
     public RootWorker(String productionKey, String produceQueueName, ClusterConnectionProvider connectionProvider) throws IOException {
-        super(productionKey, "ROOT-WORKER", null, produceQueueName, connectionProvider);
+        super(productionKey, ROOT_WORKER_NAME, null, produceQueueName, connectionProvider);
     }
 
     public RootWorker(String productionKey, String produceQueueName, GenericObjectPoolConfig config, ClusterConnectionProvider connectionProvider) throws IOException {
-        super(productionKey, "ROOT-WORKER", null, produceQueueName, config, connectionProvider);
+        super(productionKey, ROOT_WORKER_NAME, null, produceQueueName, config, connectionProvider);
     }
 
     @Override

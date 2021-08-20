@@ -1,4 +1,4 @@
-package com.nghiatd16.communication;
+package com.nghiatd16.communication.clientpool;
 
 import com.nghiatd16.communication.clientpool.ChannelFactory;
 import com.nghiatd16.communication.clientpool.ChannelPool;

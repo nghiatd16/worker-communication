@@ -1,4 +1,4 @@
-package com.nghiatd16.communication;
+package com.nghiatd16.communication.common;
 
 import org.json.JSONObject;
 import org.json.JSONException;
