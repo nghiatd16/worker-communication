@@ -127,7 +127,7 @@ public abstract class BaseWorker extends BaseConnector {
 
     abstract public void produceJob(JobDescription jobDescription);
 
-    abstract public void doJob(JobDescription jobDescription);
+    abstract public void doJob(JobDescription jobDescription) throws Exception;
 
     abstract public void onReceiveJobHandler(Channel channel,
                                              String consumerTag,

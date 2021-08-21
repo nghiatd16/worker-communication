@@ -19,7 +19,7 @@ class Worker2 extends LeafWorker {
     }
 
     @Override
-    public void doJob(JobDescription jobDescription) {
+    public void doJob(JobDescription jobDescription) throws Exception {
         int num_c = (int) jobDescription.get("num_c");
         if (num_c % 2 == 0){
             System.out.println("Ket qua " + num_c + " la 1 so chan");

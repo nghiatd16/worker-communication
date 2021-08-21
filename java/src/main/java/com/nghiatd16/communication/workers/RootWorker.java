@@ -36,12 +36,16 @@ public class RootWorker extends BaseWorker {
         timelogjson.put("recv_time", TimeHelper.Instance.getLocalNowTimestamp());
         jobDescription.addAttribute("_timelogs_", new JSONArray(Arrays.asList(timelogjson)));
 //        Call doJob
-        doJob(jobDescription);
+        try {
+            doJob(jobDescription);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         sendMessageToQueue(produceQueueName, jobDescription);
     }
 
     @Override
-    public void doJob(JobDescription jobDescription) {
+    public void doJob(JobDescription jobDescription) throws Exception {
 
     }
 

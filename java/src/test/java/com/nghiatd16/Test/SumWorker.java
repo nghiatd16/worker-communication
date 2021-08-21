@@ -14,7 +14,7 @@ class Worker1 extends AbstractWorker{
     }
 
     @Override
-    public void doJob(JobDescription jobDescription) {
+    public void doJob(JobDescription jobDescription) throws Exception {
         int num_a = (int) jobDescription.get("num_a");
         int num_b = (int) jobDescription.get("num_b");
         int total = num_a + num_b;
