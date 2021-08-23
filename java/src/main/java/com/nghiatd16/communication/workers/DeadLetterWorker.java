@@ -13,12 +13,13 @@ import java.nio.charset.StandardCharsets;
 
 public abstract class DeadLetterWorker extends BaseWorker {
 
-    public DeadLetterWorker(String productionKey, String workerName, String consumeQueueName, String produceQueueName, ClusterConnectionProvider connectionProvider) throws IOException {
-        super(productionKey, workerName, consumeQueueName, produceQueueName, connectionProvider);
+    public DeadLetterWorker(String productionKey, ClusterConnectionProvider connectionProvider) throws IOException {
+
+        super(productionKey, DEAD_LETTER_WORKER_NAME, DEAD_LETTER_WORKER_NAME, null, connectionProvider);
     }
 
-    public DeadLetterWorker(String productionKey, String workerName, String consumeQueueName, String produceQueueName, GenericObjectPoolConfig config, ClusterConnectionProvider connectionProvider) throws IOException {
-        super(productionKey, workerName, consumeQueueName, produceQueueName, config, connectionProvider);
+    public DeadLetterWorker(String productionKey, GenericObjectPoolConfig config, ClusterConnectionProvider connectionProvider) throws IOException {
+        super(productionKey, DEAD_LETTER_WORKER_NAME, DEAD_LETTER_WORKER_NAME, null, config, connectionProvider);
     }
 
     @Override
